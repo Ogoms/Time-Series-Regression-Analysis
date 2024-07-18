@@ -1,0 +1,231 @@
+Analytical Questions
+Is the train dataset complete (has all the required dates)?
+To answer this, we need to check if there are any missing dates in the dataset.
+python
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+import xgboost as xgb
+
+# Load the data
+train = pd.read_csv('train.csv')
+train['date'] = pd.to_datetime(train['date'])
+
+# Check for missing dates
+date_range = pd.date_range(start=train['date'].min(), end=train['date'].max())
+missing_dates = set(date_range) - set(train['date'].unique())
+
+if len(missing_dates) == 0:
+    print("The train dataset is complete and has all required dates.")
+else:
+    print(f"The train dataset is missing {len(missing_dates)} dates.")
+
+Which dates have the lowest and highest sales for each year?
+python
+# Group by date and calculate total sales
+daily_sales = train.groupby('date')['sales'].sum().reset_index()
+daily_sales['year'] = daily_sales['date'].dt.year
+
+# Find lowest and highest sales dates for each year
+for year in daily_sales['year'].unique():
+    year_data = daily_sales[daily_sales['year'] == year]
+    min_date = year_data.loc[year_data['sales'].idxmin(), 'date']
+    max_date = year_data.loc[year_data['sales'].idxmax(), 'date']
+    print(f"Year {year}:")
+    print(f"  Lowest sales: {min_date.date()} (${year_data['sales'].min():.2f})")
+    print(f"  Highest sales: {max_date.date()} (${year_data['sales'].max():.2f})")
+
+Compare the sales for each month across the years
+python
+monthly_sales = train.groupby([train['date'].dt.year, train['date'].dt.month])['sales'].sum().reset_index()
+monthly_sales.columns = ['year', 'month', 'sales']
+max_sales_month = monthly_sales.loc[monthly_sales['sales'].idxmax()]
+print(f"The month with the highest sales was {max_sales_month['month']}/{max_sales_month['year']} with ${max_sales_month['sales']:.2f} in sales.")
+
+Did the earthquake impact sales?
+python
+# The earthquake occurred on April 16, 2016
+earthquake_date = pd.to_datetime('2016-04-16')
+before_quake = train[(train['date'] >= earthquake_date - pd.Timedelta(days=30)) & (train['date'] < earthquake_date)]
+after_quake = train[(train['date'] >= earthquake_date) & (train['date'] < earthquake_date + pd.Timedelta(days=30))]
+
+avg_sales_before = before_quake['sales'].mean()
+avg_sales_after = after_quake['sales'].mean()
+
+print(f"Average daily sales 30 days before the earthquake: ${avg_sales_before:.2f}")
+print(f"Average daily sales 30 days after the earthquake: ${avg_sales_after:.2f}")
+print(f"Percent change: {((avg_sales_after - avg_sales_before) / avg_sales_before) * 100:.2f}%")
+
+Are certain stores or groups of stores selling more products?
+python
+# Load store data
+stores = pd.read_csv('stores.csv')
+train_with_stores = train.merge(stores, on='store_nbr')
+
+# Analyze sales by store cluster
+cluster_sales = train_with_stores.groupby('cluster')['sales'].sum().sort_values(ascending=False)
+print("Top 5 selling clusters:")
+print(cluster_sales.head())
+
+# Analyze sales by city
+city_sales = train_with_stores.groupby('city')['sales'].sum().sort_values(ascending=False)
+print("\nTop 5 selling cities:")
+print(city_sales.head())
+
+# Analyze sales by state
+state_sales = train_with_stores.groupby('state')['sales'].sum().sort_values(ascending=False)
+print("\nTop 5 selling states:")
+print(state_sales.head())
+
+# Analyze sales by store type
+type_sales = train_with_stores.groupby('type')['sales'].sum().sort_values(ascending=False)
+print("\nSales by store type:")
+print(type_sales)
+
+Are sales affected by promotions, oil prices and holidays?
+python
+# Load oil prices and holidays data
+oil = pd.read_csv('oil.csv')
+holidays = pd.read_csv('holidays_events.csv')
+
+# Merge data
+train_full = train.merge(oil, on='date', how='left')
+train_full = train_full.merge(holidays, on='date', how='left')
+
+# Analyze impact of promotions
+promo_impact = train_full.groupby('onpromotion')['sales'].mean()
+print("Average sales with and without promotions:")
+print(promo_impact)
+
+# Analyze impact of oil prices
+train_full['oil_price_bin'] = pd.qcut(train_full['dcoilwtico'], q=4)
+oil_impact = train_full.groupby('oil_price_bin')['sales'].mean()
+print("\nAverage sales by oil price quartiles:")
+print(oil_impact)
+
+# Analyze impact of holidays
+holiday_impact = train_full.groupby('type')['sales'].mean()
+print("\nAverage sales by holiday type:")
+print(holiday_impact)
+
+What analysis can we get from the date and its extractable features?
+python
+train['dayofweek'] = train['date'].dt.dayofweek
+train['month'] = train['date'].dt.month
+train['year'] = train['date'].dt.year
+
+# Analyze sales by day of week
+dow_sales = train.groupby('dayofweek')['sales'].mean().sort_values(ascending=False)
+print("Average sales by day of week:")
+print(dow_sales)
+
+# Analyze sales by month
+month_sales = train.groupby('month')['sales'].mean().sort_values(ascending=False)
+print("\nAverage sales by month:")
+print(month_sales)
+
+# Analyze sales trend over years
+year_sales = train.groupby('year')['sales'].mean()
+print("\nAverage sales by year:")
+print(year_sales)
+
+Which product family and stores did the promotions affect?
+python
+promo_effect = train.groupby(['family', 'onpromotion'])['sales'].mean().unstack()
+promo_effect['promo_impact'] = (promo_effect[1] - promo_effect[0]) / promo_effect[0] * 100
+print("Top 5 product families most affected by promotions:")
+print(promo_effect.sort_values('promo_impact', ascending=False)['promo_impact'].head())
+
+store_promo_effect = train.groupby(['store_nbr', 'onpromotion'])['sales'].mean().unstack()
+store_promo_effect['promo_impact'] = (store_promo_effect[1] - store_promo_effect[0]) / store_promo_effect[0] * 100
+print("\nTop 5 stores most affected by promotions:")
+print(store_promo_effect.sort_values('promo_impact', ascending=False)['promo_impact'].head())
+
+What is the difference between RMSLE, RMSE, MSE (or why is the MAE greater than all of them?)
+RMSE (Root Mean Squared Error), RMSLE (Root Mean Squared Logarithmic Error), MSE (Mean Squared Error), and MAE (Mean Absolute Error) are all metrics used to evaluate regression models. Their main differences are:
+MSE: Average of squared differences between predicted and actual values. Sensitive to outliers.
+RMSE: Square root of MSE. In the same unit as the target variable.
+RMSLE: Similar to RMSE but uses log of values. Less sensitive to outliers, especially for large values.
+MAE: Average of absolute differences between predicted and actual values. Less sensitive to outliers than MSE/RMSE.
+MAE is often smaller than RMSE because it doesn't square the errors. However, if MAE is larger, it could indicate the presence of many small errors rather than a few large ones.
+Does the payment of wages in the public sector on the 15th and last days of the month influence the store sales?
+python
+train['is_payday'] = ((train['date'].dt.day == 15) | (train['date'].dt.is_month_end)).astype(int)
+payday_effect = train.groupby('is_payday')['sales'].mean()
+print("Average sales on paydays vs non-paydays:")
+print(payday_effect)
+print(f"Percent difference: {((payday_effect[1] - payday_effect[0]) / payday_effect[0]) * 100:.2f}%")
+
+Model Training
+Now that we've analyzed the data, let's build a model to predict unit sales. We'll use XGBoost, which is effective for this type of problem.
+python
+# Prepare the data
+train['date'] = pd.to_datetime(train['date'])
+train['dayofweek'] = train['date'].dt.dayofweek
+train['month'] = train['date'].dt.month
+train['year'] = train['date'].dt.year
+train['is_payday'] = ((train['date'].dt.day == 15) | (train['date'].dt.is_month_end)).astype(int)
+
+# Merge with other datasets
+train = train.merge(stores, on='store_nbr', how='left')
+train = train.merge(oil, on='date', how='left')
+train = train.merge(holidays, on='date', how='left')
+
+# Fill NaN values
+train['dcoilwtico'].fillna(method='ffill', inplace=True)
+train['type'].fillna('Regular', inplace=True)
+train['locale'].fillna('National', inplace=True)
+
+# Encode categorical variables
+cat_columns = ['family', 'city', 'state', 'type', 'locale']
+for col in cat_columns:
+    train[col] = train[col].astype('category').cat.codes
+
+# Prepare features and target
+features = ['store_nbr', 'family', 'onpromotion', 'dayofweek', 'month', 'year', 'is_payday', 
+            'city', 'state', 'type', 'cluster', 'dcoilwtico', 'locale']
+X = train[features]
+y = train['sales']
+
+# Split the data
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Train XGBoost model
+model = xgb.XGBRegressor(n_estimators=1000, learning_rate=0.05, random_state=42)
+model.fit(X_train, y_train, 
+          eval_set=[(X_train, y_train), (X_test, y_test)],
+          early_stopping_rounds=50,
+          verbose=100)
+
+# Make predictions
+y_pred = model.predict(X_test)
+
+# Calculate metrics
+mse = mean_squared_error(y_test, y_pred)
+rmse = np.sqrt(mse)
+mae = mean_absolute_error(y_test, y_pred)
+
+print(f"MSE: {mse:.4f}")
+print(f"RMSE: {rmse:.4f}")
+print(f"MAE: {mae:.4f}")
+
+# Feature importance
+feature_importance = model.feature_importances_
+feature_importance = pd.DataFrame({'feature': features, 'importance': feature_importance})
+feature_importance = feature_importance.sort_values('importance', ascending=False)
+print("\nTop 10 most important features:")
+print(feature_importance.head(10))
+
+This code provides a comprehensive analysis of the data and trains an XGBoost model to predict unit sales. The model incorporates various features including store information, product families, promotions, time-based features, and external factors like oil prices and holidays.
+The feature importance output will give insights into which factors are most crucial in predicting sales. This can be used to further refine the model and provide actionable insights to Corporation Favorita.
+Remember that this is a starting point. Further improvements could include:
+More advanced feature engineering
+Hyperparameter tuning
+Ensemble methods
+Time series specific techniques like lagged features
+Also, make sure to evaluate the model's performance on a separate validation set and consider using time-based cross-validation to ensure the model generalizes well to future data.
